@@ -7,7 +7,7 @@
 - Spring Cloud Gateway + Nacos 服务发现
 - 路由配置放在 Nacos（`spring-gateway.yaml`，与 `spring-micro-01` 同属 `spring-cloud-demo` 配置组）
 - Spring Cloud LoadBalancer（`lb://` 转发）
-- Sentinel 网关限流（路由 ID：`springMicro01Hello`）
+- Sentinel 网关限流（由 `spring-cloud-alibaba-sentinel-gateway` 自动装配过滤器；路由 ID：`springMicro01Hello`）
 - 全局 CORS
 
 ## 路由
