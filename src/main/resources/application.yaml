@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: spring-gateway
+  cloud:
+    nacos:
+      discovery:
+        group: spring-cloud-demo
+        server-addr: ${NACOS_SERVER_ADDR:192.168.1.205:30524}
+      config:
+        group: spring-cloud-demo
+        server-addr: ${NACOS_SERVER_ADDR:192.168.1.205:30524}
+  config:
+    import:
+      - optional:nacos:spring-gateway.yaml
+      - optional:nacos:logging-config.yaml

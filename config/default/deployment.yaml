@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-gateway
+  labels:
+    app: spring-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spring-gateway
+  template:
+    metadata:
+      labels:
+        app: spring-gateway
+      annotations:
+        kubesphere.io/imagepullsecrets: '{"spring-gateway":"dockerhub-id"}'
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-id
+      containers:
+        - name: spring-gateway
+          image: spring-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: NACOS_SERVER_ADDR
+              value: "192.168.1.205:30524"
+          livenessProbe:
+            httpGet:
+              path: /hello
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /hello
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
