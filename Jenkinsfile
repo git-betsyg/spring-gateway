@@ -1,0 +1,99 @@
+pipeline {
+    agent {
+        node {
+            label 'jdk17'
+        }
+    }
+
+    parameters {
+        string(name: 'TAG_NAME', defaultValue: '', description: '')
+    }
+
+    environment {
+        DOCKER_CREDENTIAL_ID = 'dockerhub-id'
+        GITHUB_CREDENTIAL_ID = 'github-id'
+        KUBECONFIG_CREDENTIAL_ID = 'kubeconfig'
+        REGISTRY = '192.168.1.154'
+        DOCKERHUB_NAMESPACE = 'ks-devops-harbor' // change me
+        GITHUB_ACCOUNT = 'git-betsyg' // change me
+        APP_NAME = 'spring-gateway'
+        SONAR_CREDENTIAL_ID = 'sonar-token'
+    }
+
+    stages {
+        stage ('checkout scm') {
+            steps {
+                checkout(scm)
+            }
+        }
+
+        stage('unit test') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean test'
+                }
+            }
+        }
+
+        stage('sonarqube analysis') {
+            steps {
+                container('maven') {
+                    withCredentials([string(credentialsId: "$SONAR_CREDENTIAL_ID", variable: 'SONAR_TOKEN')]) {
+                        withSonarQubeEnv('sonar') {
+                            sh 'mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN'
+                        }
+                    }
+                    timeout(time: 1, unit: 'HOURS') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                }
+            }
+        }
+
+        stage('build & push') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean package -DskipTests'
+                    sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BRANCH_NAME-$BUILD_NUMBER .'
+                    withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID",)]) {
+                        sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
+                        sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BRANCH_NAME-$BUILD_NUMBER'
+                    }
+                }
+            }
+        }
+
+        stage('push latest') {
+            when {
+                branch 'main'
+            }
+            steps {
+                container('maven') {
+                    sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BRANCH_NAME-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest '
+                    sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest '
+                }
+            }
+        }
+
+        stage('push with tag') {
+            when {
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
+            }
+            steps {
+                container('maven') {
+                    input(id: 'release-image-with-tag', message: 'release image with tag?')
+                    withCredentials([usernamePassword(credentialsId: "$GITHUB_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                        sh 'git config --global user.email "kubesphere@yunify.com" '
+                        sh 'git config --global user.name "kubesphere" '
+                        sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
+                        sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@github.com/$GITHUB_ACCOUNT/spring-gateway.git --tags --ipv4'
+                    }
+                    sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BRANCH_NAME-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME '
+                    sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME '
+                }
+            }
+        }
+    }
+}
